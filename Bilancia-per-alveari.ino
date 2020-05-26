@@ -1,19 +1,22 @@
+#include "HX711.h"
 #include "sms.h"
 #include <SoftwareSerial.h>
+
 GSM GSM;
 SMSGSM sms;
 
-#include "HX711.h"
-#define DOUT A1
-#define SCK A0
-HX711 scale(DOUT, SCK);
+const int LOADCELL_DOUT_PIN = A1;
+const int LOADCELL_SCK_PIN = A0;
+HX711 scale;
 
 char Misure[20];
 boolean started=false;
 char smsbuffer[10];
 char Mittente[20];
 
-float valoredicalibrazione = -21.45;  // calibrazione della cella di carico
+const float LOADCELL_DIVIDER = -21.45;  // calibrazione della cella di carico
+//const float LOADCELL_DIVIDER = 5895655;
+
 float units;
 float units_sms;
 char peso[5];                         //char dove inserire il valore di peso da inviare via SMS
@@ -25,7 +28,6 @@ void setup() {
     digitalWrite(Reset, HIGH);          //Dichiaro il Pin 4 in che condizione deve stare quando non
     delay(200);                         //viene interessato dal comando di Reset
     pinMode(Reset, OUTPUT);
-
 
     Serial.begin(19200);
 
@@ -39,11 +41,9 @@ void setup() {
     digitalWrite(9,LOW);
     delay(5000);
 
-
     Serial.println("VERIFICA SE LA SCHEDA GSM E' CONNESSA.");
 
     //Inizializzo la connessione impostando il baurate
-
     if (gsm.begin(2400)) {
         Serial.println("STATO Modulo GSM = CONNESSO");
         started=true;
@@ -57,7 +57,10 @@ void loop() {
 
     char position;
 
-    scale.set_scale(valoredicalibrazione);
+    // init
+    scale.begin(LOADCELL_DOUT_PIN, LOADCELL_SCK_PIN);
+    scale.set_scale(LOADCELL_DIVIDER);
+    //loadcell.set_offset(LOADCELL_OFFSET);
 
     // Faccio una media di 10 letture e le associo alla voce "units"
     units = scale.get_units(10);
@@ -65,7 +68,6 @@ void loop() {
     Serial.print("Peso:");
     Serial.print(units, 0);
     Serial.println(" g ");
-
 
     strcpy(Mittente,"3473813504");
 
@@ -108,4 +110,7 @@ void loop() {
         }
         sms.DeleteSMS(position);             //Cancello dalla SIM i messaggi appena letti ed eseguiti
     }
+    // scale.power_down();              // put the ADC in sleep mode
+    // delay(5000);
+    // scale.power_up();
 }
