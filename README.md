@@ -2,4 +2,4 @@
 
 External libs froms:
 # https://github.com/jefflab/GSMSHIELD/
-# https://github.com/hiveeyes/HX711/
+# https://github.com/bogde/HX711/
