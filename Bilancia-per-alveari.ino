@@ -14,17 +14,12 @@ const int LOADCELL_DOUT_PIN = A1;
 const int LOADCELL_SCK_PIN = A0;
 HX711 scale;
 
-char Misure[20];
 boolean started=false;
 char smsbuffer[10];
 char Mittente[20];
 
 const float LOADCELL_DIVIDER = -21.45;  // calibrazione della cella di carico
 //const float LOADCELL_DIVIDER = 5895655;
-
-float units;
-float units_sms;
-char peso[5];                           //char dove inserire il valore di peso da inviare via SMS
 
 //int Reset = 4;                          //dichiaro il Pin per dare l'impulso di reset quando richiesto
 void(* Riavvia)(void) = 0;              //Comando per Software Reset solo con Auduino Uno
@@ -55,8 +50,7 @@ void setup() {
     Serial.println(scale.get_value(5));           // print the average of 5 readings from the ADC minus the tare weight (not set yet)
 
     Serial.print("get units: \t\t");
-    Serial.println(scale.get_units(5), 1);        // print the average of 5 readings from the ADC minus tare weight (not set) divided
-                                                  // by the SCALE parameter (not set yet)
+    Serial.println(scale.get_units(5), 1);        // print the average of 5 readings from the ADC minus tare weight (not set) divided by the SCALE parameter (not set yet)
 #endif
 
     scale.set_scale(LOADCELL_DIVIDER);
@@ -76,8 +70,7 @@ void setup() {
     Serial.println(scale.get_value(5));           // print the average of 5 readings from the ADC minus the tare weight, set with tare()
 
     Serial.print("get units: \t\t");
-    Serial.println(scale.get_units(5), 1);        // print the average of 5 readings from the ADC minus tare weight, divided
-                                                  // by the SCALE parameter set with set_scale
+    Serial.println(scale.get_units(5), 1);        // print the average of 5 readings from the ADC minus tare weight, divided  by the SCALE parameter set with set_scale
 #endif
 #ifdef GSM
     Serial.println("ACCENSIONE MODULO GSM...");
@@ -101,20 +94,24 @@ void setup() {
 };
 
 void loop() {
-    Serial.print("Nuova lettura:\t");
+    int vcc = readVcc();
+    float units;                                     //float dove inserire il valore di peso da stampare su seriale
+    Serial.print("Lettura VCC:\t");
+    Serial.print(vcc);
+    Serial.print(" mV\t| Pesata:\t");
     Serial.print(scale.get_units(), 1);
-    Serial.print("\t| media:\t");
-    Serial.println(scale.get_units(10), 1);          // Faccio una media di 10 letture meno il peso della tara
- 
-    units = scale.get_units(10);                     // Faccio una media di 10 letture e le associo alla voce "units"
-
-    Serial.print("Peso:");
+    Serial.print(" g\t| Media:\t");
+    units = (scale.get_units(10), 1);                 // Faccio una media di 10 letture meno il peso della tara, diviso per la SCALA parametrica settata con set_scale e le associo alla voce "units"
+    //units = (scale.get_units(5), 1);                // Faccio una media di 5 letture meno il peso della tara, diviso per la SCALA parametrica settata con set_scale e le associo alla voce "units"
     Serial.print(units, 0);
-    Serial.println(" g ");
+    Serial.println(" g");
+
 #ifdef GSM
-    if(started) {                                    // Check if there is an active connection.
-        digitalWrite(LED_BUILTIN, LOW);              // turn the LED off by making the voltage LOW
+    if(started) {                                     // Check if there is an active connection.
+        digitalWrite(LED_BUILTIN, LOW);               // turn the LED off by making the voltage LOW
         char position;
+        char str_peso[5] = "";                        //char temporanea dove inserire il valore di peso da inviare via SMS
+        char peso[20] = "";                           //char dove inserire il valore di peso da inviare via SMS
         strcpy(Mittente,"3473813504");
 
         // Legge se ci sono messaggi disponibili sulla SIM Card
@@ -136,21 +133,18 @@ void loop() {
                 Riavvia();                               //Comando si software reset con Arduino Uno
             }
             if (strcmp(smsbuffer,"Misure")==0)  {        //Invio sms "Misure" per ricevere sms con valori
-                units_sms = scale.get_units(5);
-                dtostrf(units_sms,0,0,peso);
-                snprintf(Misure,20,"Peso=%sg",peso);
-                sms.SendSMS(Mittente,Misure);
+                dtostrf(units,0,0,str_peso);
+                snprintf(peso,20,"Peso=%s g",str_peso);
+                sms.SendSMS(Mittente,peso);
                 sms.DeleteSMS(position);                 //Cancello dalla SIM il comando appenna letto
                 delay(500);
-                Serial.print(Misure);
+                Serial.print(peso);
             }
             else {
                 Serial.println(" => non riconosciuto!");
                 sms.SendSMS(Mittente,"Comando Errato");  //risposta in caso di messaggio errato
                 sms.DeleteSMS(position);                 //Cancello dalla SIM il comando appenna letto
                 delay(500);
-                //lcd.clear();
-                //lcd.init();
             }
             sms.DeleteSMS(position);                     //Cancello dalla SIM i messaggi appena letti ed eseguiti
         }
@@ -160,3 +154,27 @@ void loop() {
     delay(5000);
     scale.power_up();
 };
+
+long readVcc() {
+  // Read 1.1V reference against AVcc
+  // set the reference to Vcc and the measurement to the internal 1.1V reference
+  #if defined(__AVR_ATmega32U4__) || defined(__AVR_ATmega1280__) || defined(__AVR_ATmega2560__)
+    ADMUX = _BV(REFS0) | _BV(MUX4) | _BV(MUX3) | _BV(MUX2) | _BV(MUX1);
+  #elif defined (__AVR_ATtiny24__) || defined(__AVR_ATtiny44__) || defined(__AVR_ATtiny84__)
+     ADMUX = _BV(MUX5) | _BV(MUX0) ;
+  #else
+    ADMUX = _BV(REFS0) | _BV(MUX3) | _BV(MUX2) | _BV(MUX1);
+  #endif
+
+  delay(2); // Wait for Vref to settle
+  ADCSRA |= _BV(ADSC); // Start conversion
+  while (bit_is_set(ADCSRA,ADSC)); // measuring
+
+  uint8_t low  = ADCL; // must read ADCL first - it then locks ADCH
+  uint8_t high = ADCH; // unlocks both
+
+  long result = (high<<8) | low;
+
+  result = 1125300L / result; // Calculate Vcc (in mV); 1125300 = 1.1*1023*1000
+  return result; // Vcc in millivolts
+}
