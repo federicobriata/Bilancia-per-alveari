@@ -2,6 +2,7 @@
 #include "sms.h"
 #include <SoftwareSerial.h>
 
+//#define CALIBRAZIONE
 //#define DEBUG_MODE
 #define GSM
 
@@ -14,12 +15,17 @@ const int LOADCELL_DOUT_PIN = A1;
 const int LOADCELL_SCK_PIN = A0;
 HX711 scale;
 
+int vcc;
 boolean started=false;
+float units;                                     //float dove inserire il valore di peso
+char position;
 char smsbuffer[10];
-char Mittente[20];
+char mittente[20];
+char str_peso[5];                        //char temporanea dove inserire il valore di peso da inviare via SMS
+char messaggio[63];                           //char dove costruire il testo da inviare via SMS
 
-const float LOADCELL_DIVIDER = -21.45;  // calibrazione della cella di carico
-//const float LOADCELL_DIVIDER = 5895655;
+//const float LOADCELL_OFFSET = 226743; // the offset of the scale, is raw output without any weight, get this first and then do set.scale
+const float LOADCELL_DIVIDER = -21.45;  // scala di calibrazione della cella di carico, this is the difference between the raw data of a known weight and an emprty scale
 
 //int Reset = 4;                          //dichiaro il Pin per dare l'impulso di reset quando richiesto
 void(* Riavvia)(void) = 0;              //Comando per Software Reset solo con Auduino Uno
@@ -38,6 +44,10 @@ void setup() {
     // init bilancia
     scale.begin(LOADCELL_DOUT_PIN, LOADCELL_SCK_PIN);
 
+#ifdef CALIBRAZIONE
+    calibrazione();
+#endif
+
 #ifdef DEBUG_MODE
     Serial.println("Before setting up the scale:");
     Serial.print("read: \t\t");
@@ -53,8 +63,8 @@ void setup() {
     Serial.println(scale.get_units(5), 1);        // print the average of 5 readings from the ADC minus tare weight (not set) divided by the SCALE parameter (not set yet)
 #endif
 
-    scale.set_scale(LOADCELL_DIVIDER);
     //loadcell.set_offset(LOADCELL_OFFSET);
+    scale.set_scale(LOADCELL_DIVIDER);
     scale.tare();                                 // reset the scale to 0
 
 #ifdef DEBUG_MODE
@@ -94,34 +104,40 @@ void setup() {
 };
 
 void loop() {
-    int vcc = readVcc();
-    float units;                                     //float dove inserire il valore di peso da stampare su seriale
-    Serial.print("Lettura VCC:\t");
+    vcc = readVcc();
+    Serial.print("Lettura VCC:\t\t");
     Serial.print(vcc);
-    Serial.print(" mV\t| Pesata:\t");
-    Serial.print(scale.get_units(), 1);
-    Serial.print(" g\t| Media:\t");
-    units = (scale.get_units(10), 1);                 // Faccio una media di 10 letture meno il peso della tara, diviso per la SCALA parametrica settata con set_scale e le associo alla voce "units"
-    //units = (scale.get_units(5), 1);                // Faccio una media di 5 letture meno il peso della tara, diviso per la SCALA parametrica settata con set_scale e le associo alla voce "units"
+    Serial.println(" mV");
+    Serial.println("Pesata media grezza:\t");
+    Serial.print(scale.read_average(5));	            // Peso medio grezzo di 5 letture
+    Serial.println(" g");
+    Serial.println("Pesata grezza singola:\t\t");
+    Serial.print(scale.get_value());                  // Peso grezzo sungolo, returns (read_average() - LOADCELL_OFFSET), that is the current value without the tare weight
+    Serial.println(" g");
+    Serial.println("Pesata media senza tara:\t\t");
+ // Associo alla variabile units che sarà usata anche per SMS
+    units = (scale.get_units(5));                     // Peso medio di 5 letture meno il peso della tara"
     Serial.print(units, 0);
+    Serial.println(" g");
+    Serial.println("Pesata media senza tara diviso scala di calibrazione:\t");
+    Serial.print(scale.get_units(5), 1);              // returns get_value() divided by LOADCELL_DIVIDER la media di 5 letture meno il peso della tara, diviso per il valore della scala di calibrazione settata con set_scale"
     Serial.println(" g");
 
 #ifdef GSM
     if(started) {                                     // Check if there is an active connection.
         digitalWrite(LED_BUILTIN, LOW);               // turn the LED off by making the voltage LOW
-        char position;
-        char str_peso[5] = "";                        //char temporanea dove inserire il valore di peso da inviare via SMS
-        char peso[20] = "";                           //char dove inserire il valore di peso da inviare via SMS
-        strcpy(Mittente,"3473813504");
+	      str_peso[5] = "";                             //char temporanea dove inserire il valore di peso da inviare via SMS
+        messaggio[63] = "";
+        strcpy(mittente,"3473813504");
 
         // Legge se ci sono messaggi disponibili sulla SIM Card
         // e li visualizza sul Serial1 Monitor.
         position = sms.IsSMSPresent(SMS_UNREAD);         // Con questo comando esegue solo gli Sms non letti
         if (position) {
             // Leggo il messaggio SMS e stabilisco chi sia il mittente
-            sms.GetSMS(position, Mittente, smsbuffer, 10);
+            sms.GetSMS(position, mittente, smsbuffer, 10);
             Serial.println("Messaggio inviato da:");
-            Serial.println(Mittente);
+            Serial.println(mittente);
             Serial.println("\r\n SMS testo:");
             Serial.print(smsbuffer);
 
@@ -133,16 +149,16 @@ void loop() {
                 Riavvia();                               //Comando si software reset con Arduino Uno
             }
             if (strcmp(smsbuffer,"Misure")==0)  {        //Invio sms "Misure" per ricevere sms con valori
-                dtostrf(units,0,0,str_peso);
-                snprintf(peso,20,"Peso=%s g",str_peso);
-                sms.SendSMS(Mittente,peso);
+                dtostrf(units,0,0,str_peso);             // make the float into a char array
+                snprintf(messaggio,63,"VCC=%d mV | Peso=%s g",vcc, str_peso);
+                sms.SendSMS(mittente,messaggio);
                 sms.DeleteSMS(position);                 //Cancello dalla SIM il comando appenna letto
                 delay(500);
-                Serial.print(peso);
+                Serial.print(messaggio);
             }
             else {
                 Serial.println(" => non riconosciuto!");
-                sms.SendSMS(Mittente,"Comando Errato");  //risposta in caso di messaggio errato
+                sms.SendSMS(mittente,"Comando Errato");  //risposta in caso di messaggio errato
                 sms.DeleteSMS(position);                 //Cancello dalla SIM il comando appenna letto
                 delay(500);
             }
@@ -154,6 +170,28 @@ void loop() {
     delay(5000);
     scale.power_up();
 };
+
+void calibrazione() {
+  //1 Call set_scale() with no parameter.
+  //2 Call tare() with no parameter.
+  //3 Place a known weight on the scale and call get_units(10).
+  //4 Divide the result in step 3 to your known weight. You should get about the parameter you need to pass to set_scale().
+  //5 Adjust the parameter in step 4 until you get an accurate reading.
+
+  scale.set_scale();
+  scale.tare();
+  Serial.println("Hai 5 secondi per posizionare 2kg di peso");
+  delay(5000);
+  long x = scale.get_units(10);          //stampa media dopo 20 letture
+  long y = 2000;                        // i 2kg
+  double m = (double)(x/y);
+  Serial.print("media delle 10 letture: ");
+  Serial.println(x);
+  Serial.print("il peso noto: ");
+  Serial.println(y);
+  Serial.print("il valore da passare a set_scale è:");
+  Serial.println(m);
+}
 
 long readVcc() {
   // Read 1.1V reference against AVcc
