@@ -3,8 +3,20 @@
 #include <SoftwareSerial.h>
 
 //#define CALIBRAZIONE
-//#define DEBUG_MODE
+#define DEBUG_MODE
 #define GSM
+
+#ifdef DEBUG_MODE                              // open Serial via USB-Serial
+  #define DEBUG_PRINT(x) Serial.print(x)
+  #define DEBUG_PRINT2(x,y) Serial.print(x,y)
+  #define DEBUG_PRINTLN(x) Serial.println(x)
+  #define DEBUG_PRINTLNDEC(x,DEC) Serial.println(x,DEC)
+#else
+  #define DEBUG_PRINT(x)
+  #define DEBUG_PRINT2(x,DEC)
+  #define DEBUG_PRINTLN(x)
+  #define DEBUG_PRINTLNDEC(x,DEC)
+#endif
 
 #ifdef GSM
 GSM GSM;
@@ -18,11 +30,7 @@ HX711 scale;
 int vcc;
 boolean started=false;
 float units;                                     //float dove inserire il valore di peso
-char position;
-char smsbuffer[10];
-char mittente[20];
-char str_peso[5];                        //char temporanea dove inserire il valore di peso da inviare via SMS
-char messaggio[63];                           //char dove costruire il testo da inviare via SMS
+char destinatario[20];
 
 //const float LOADCELL_OFFSET = 226743; // the offset of the scale, is raw output without any weight, get this first and then do set.scale
 const float LOADCELL_DIVIDER = -21.45;  // scala di calibrazione della cella di carico, this is the difference between the raw data of a known weight and an emprty scale
@@ -48,42 +56,13 @@ void setup() {
     calibrazione();
 #endif
 
-#ifdef DEBUG_MODE
-    Serial.println("Before setting up the scale:");
-    Serial.print("read: \t\t");
-    Serial.println(scale.read());                 // print a raw reading from the ADC
-
-    Serial.print("read average: \t\t");
-    Serial.println(scale.read_average(20));       // print the average of 20 readings from the ADC
-
-    Serial.print("get value: \t\t");
-    Serial.println(scale.get_value(5));           // print the average of 5 readings from the ADC minus the tare weight (not set yet)
-
-    Serial.print("get units: \t\t");
-    Serial.println(scale.get_units(5), 1);        // print the average of 5 readings from the ADC minus tare weight (not set) divided by the SCALE parameter (not set yet)
-#endif
-
-    //loadcell.set_offset(LOADCELL_OFFSET);
+    //scale.set_offset(LOADCELL_OFFSET);
     scale.set_scale(LOADCELL_DIVIDER);
     scale.tare();                                 // reset the scale to 0
 
-#ifdef DEBUG_MODE
-    Serial.println("After setting up the scale:");
-
-    Serial.print("read: \t\t");
-    Serial.println(scale.read());                 // print a raw reading from the ADC
-
-    Serial.print("read average: \t\t");
-    Serial.println(scale.read_average(20));       // print the average of 20 readings from the ADC
-
-    Serial.print("get value: \t\t");
-    Serial.println(scale.get_value(5));           // print the average of 5 readings from the ADC minus the tare weight, set with tare()
-
-    Serial.print("get units: \t\t");
-    Serial.println(scale.get_units(5), 1);        // print the average of 5 readings from the ADC minus tare weight, divided  by the SCALE parameter set with set_scale
-#endif
 #ifdef GSM
-    Serial.println("ACCENSIONE MODULO GSM...");
+    strcpy(destinatario,"+393473813504");         //Salva il mio numero nel char destinatario
+    DEBUG_PRINTLN("ACCENSIONE MODULO GSM...");
 
     //    in questo momento il modem è alimentato direttamente da LM2596
     //    digitalWrite(9,HIGH);
@@ -91,78 +70,115 @@ void setup() {
     //    digitalWrite(9,LOW);
     //    delay(5000);
 
-    Serial.println("VERIFICA SE LA SCHEDA GSM E' CONNESSA.");
+    DEBUG_PRINTLN("VERIFICA SE LA SCHEDA GSM E' CONNESSA.");
 
     //Inizializzo la connessione impostando il baurate
     if (gsm.begin(2400)) {
-        Serial.println("STATO Modulo GSM = CONNESSO");
+        DEBUG_PRINTLN("STATO Modulo GSM = CONNESSO");
         started=true;
     }
-    else Serial.println("STATO Modulo GSM = NON CONNESS0");
+    else DEBUG_PRINTLN("STATO Modulo GSM = NON CONNESS0");
 #endif
-    Serial.println("Inizio letture:");
 };
 
 void loop() {
+    DEBUG_PRINTLN("\r\nNuova lettura..");
     vcc = readVcc();
-    Serial.print("Lettura VCC:\t\t");
-    Serial.print(vcc);
-    Serial.println(" mV");
-    Serial.println("Pesata media grezza:\t");
-    Serial.print(scale.read_average(5));	            // Peso medio grezzo di 5 letture
-    Serial.println(" g");
-    Serial.println("Pesata grezza singola:\t\t");
-    Serial.print(scale.get_value());                  // Peso grezzo sungolo, returns (read_average() - LOADCELL_OFFSET), that is the current value without the tare weight
-    Serial.println(" g");
-    Serial.println("Pesata media senza tara:\t\t");
+    DEBUG_PRINT("\tLettura VCC:\t\t\t\t\t\t");
+    DEBUG_PRINT(vcc);
+    DEBUG_PRINTLN(" mV");
+    DEBUG_PRINT("\tPesata media grezza:\t\t\t\t\t");
+    DEBUG_PRINT(scale.read_average(5));	            // Peso medio grezzo di 5 letture
+    DEBUG_PRINTLN(" g");
+    DEBUG_PRINT("\tPesata grezza singola:\t\t\t\t\t");
+    DEBUG_PRINT(scale.get_value());                  // Peso grezzo singolo, returns (read_average() - LOADCELL_OFFSET), that is the current value without the tare weight
+    DEBUG_PRINTLN(" g");
+    DEBUG_PRINT("\tPesata media senza tara:\t\t\t\t");
  // Associo alla variabile units che sarà usata anche per SMS
-    units = (scale.get_units(5));                     // Peso medio di 5 letture meno il peso della tara"
-    Serial.print(units, 0);
-    Serial.println(" g");
-    Serial.println("Pesata media senza tara diviso scala di calibrazione:\t");
-    Serial.print(scale.get_units(5), 1);              // returns get_value() divided by LOADCELL_DIVIDER la media di 5 letture meno il peso della tara, diviso per il valore della scala di calibrazione settata con set_scale"
-    Serial.println(" g");
+    units = (scale.get_units(5));                     // Peso medio di 5 letture meno il peso della tara
+    DEBUG_PRINT2(units, 0);
+    DEBUG_PRINTLN(" g");
+    DEBUG_PRINT("\tPesata media senza tara diviso scala di calibrazione:\t");
+    DEBUG_PRINT2(scale.get_units(5), 1);              // returns get_value() divided by LOADCELL_DIVIDER la media di 5 letture meno il peso della tara, diviso per il valore della scala di calibrazione settata con set_scale"
+    DEBUG_PRINTLN(" g");
 
 #ifdef GSM
     if(started) {                                     // Check if there is an active connection.
         digitalWrite(LED_BUILTIN, LOW);               // turn the LED off by making the voltage LOW
-	      str_peso[5] = "";                             //char temporanea dove inserire il valore di peso da inviare via SMS
-        messaggio[63] = "";
-        strcpy(mittente,"3473813504");
 
-        // Legge se ci sono messaggi disponibili sulla SIM Card
-        // e li visualizza sul Serial1 Monitor.
-        position = sms.IsSMSPresent(SMS_UNREAD);         // Con questo comando esegue solo gli Sms non letti
+        char str_peso[5] = "";                                      //char temporanea dove inserire il valore di peso da inviare via SMS
+        char messaggio[63] = "";                                    //char completa usata per inviare SMS
+        char mittente[20] = "";                                     //reset char che contiene il numero di telefono di SMS ricevuti
+        char smsbuffer[100] = "";
+        char statSMS = -1;
+        char position = sms.IsSMSPresent(SMS_READ);                 //Con questo comando controlla solo gli SMS già letti e li cancella
+
         if (position) {
-            // Leggo il messaggio SMS e stabilisco chi sia il mittente
-            sms.GetSMS(position, mittente, smsbuffer, 10);
-            Serial.println("Messaggio inviato da:");
-            Serial.println(mittente);
-            Serial.println("\r\n SMS testo:");
-            Serial.print(smsbuffer);
-
-            if (strcmp(smsbuffer,"Reset")==0)  {         //Invio sms "Reset" per resettare il programma
-                Serial.println("...Riavvio...");
-                sms.DeleteSMS(position);                 //Cancello dalla SIM il comando appenna letto
-                //digitalWrite(Reset, LOW);              //Eseguo il comando di Reset mettendo a massa il Pin 4
-                delay(500);
-                Riavvia();                               //Comando si software reset con Arduino Uno
+            DEBUG_PRINT("SMS Position: ");
+            DEBUG_PRINTLNDEC(position,DEC);
+            statSMS = (sms.GetSMS(position, mittente, smsbuffer, 100));     //Leggo il messaggio SMS e registro il numero del mittente
+            if (statSMS!=1) {
+              DEBUG_PRINT("ERRORE: Ricezione SMS! Codice errore: ");
+              DEBUG_PRINTLN(statSMS);
             }
-            if (strcmp(smsbuffer,"Misure")==0)  {        //Invio sms "Misure" per ricevere sms con valori
-                dtostrf(units,0,0,str_peso);             // make the float into a char array
-                snprintf(messaggio,63,"VCC=%d mV | Peso=%s g",vcc, str_peso);
-                sms.SendSMS(mittente,messaggio);
-                sms.DeleteSMS(position);                 //Cancello dalla SIM il comando appenna letto
-                delay(500);
-                Serial.print(messaggio);
+            DEBUG_PRINT("SMS ignorato ricevuto da:");
+            DEBUG_PRINTLN(mittente);
+            DEBUG_PRINT("\r\ncontenuto SMS:");
+            DEBUG_PRINTLN(smsbuffer);
+            DEBUG_PRINTLN(" => Trovato messaggio già letto.");
+            statSMS = (sms.DeleteSMS(position));      //Cancello dalla SIM i messaggi ricevuti da destinatari sconosciuti o indesiderati
+            if (statSMS!=1) DEBUG_PRINTLN("ERRORE: SMS non cancellato!");
+            else DEBUG_PRINTLN("SMS cancellato!");
+        }
+        position = sms.IsSMSPresent(SMS_UNREAD);               //Con questo comando controlla solo gli SMS non letti
+        if (position) {
+            DEBUG_PRINT("SMS Position: ");
+            DEBUG_PRINTLNDEC(position,DEC);
+            sms.GetSMS(position, mittente, smsbuffer, 100);     //Leggo il messaggio SMS e registro il numero del mittente
+            DEBUG_PRINT("Nuovo SMS ricevuto da:");
+            DEBUG_PRINTLN(mittente);
+            DEBUG_PRINT("\r\ncontenuto SMS:");
+            DEBUG_PRINTLN(smsbuffer);
+            if (strcmp(mittente,destinatario)==0)  {           // Verifico che sia del giusto mittente
+                  if (strcmp(smsbuffer,"Reset")==0)  {         //Ricevuto sms "Reset" per resettare il programma
+                      DEBUG_PRINTLN("...Riavvio...");
+                      statSMS = (sms.DeleteSMS(position));     //Cancello dalla SIM il comando appenna letto
+                      if (statSMS!=1) DEBUG_PRINTLN("ERRORE: SMS non cancellato!");
+                      else DEBUG_PRINTLN("SMS cancellato!");
+                      delay(500);
+                      //digitalWrite(Reset, LOW);              //Eseguo il comando di Reset mettendo a massa il Pin 4 con Arduino Mega
+                      Riavvia();                               //Comando di software reset con Arduino Uno
+                  }
+                  if (strcmp(smsbuffer,"Misure")==0)  {        //Ricevuto sms "Misure" per inviare sms con valori
+                      dtostrf(units,0,0,str_peso);             // make the float into a char array
+                      snprintf(messaggio,63,"VCC=%d mV | Peso medio=%s g",vcc, str_peso);
+                      statSMS = (sms.SendSMS(destinatario,messaggio));
+                      if (statSMS!=1) DEBUG_PRINTLN("ERRORE: SMS non inviato");
+                      statSMS = (sms.DeleteSMS(position));     //Cancello dalla SIM il messaggio appenna letto
+                      if (statSMS!=1) DEBUG_PRINTLN("ERRORE: SMS non cancellato!");
+                      else DEBUG_PRINTLN("SMS cancellato!");
+                      delay(500);
+                      DEBUG_PRINT("SMS inviato da:");
+                      DEBUG_PRINTLN(mittente);
+                      DEBUG_PRINT("\r\ncontenuto SMS:");
+                      DEBUG_PRINTLN(messaggio);
+                  }
+                  else {
+                      DEBUG_PRINTLN(" => Comando non riconosciuto!");
+                      statSMS = (sms.SendSMS(destinatario,"Comando Errato"));  //risposta in caso di messaggio errato
+                      if (statSMS!=1) DEBUG_PRINTLN("ERRORE: SMS non inviato");
+                      statSMS = (sms.DeleteSMS(position));     //Cancello dalla SIM il comando errato appenna ricevuto
+                      if (statSMS!=1) DEBUG_PRINTLN("ERRORE: SMS non cancellato!");
+                      else DEBUG_PRINTLN("SMS cancellato!");
+                      delay(500);
+                  }
             }
             else {
-                Serial.println(" => non riconosciuto!");
-                sms.SendSMS(mittente,"Comando Errato");  //risposta in caso di messaggio errato
-                sms.DeleteSMS(position);                 //Cancello dalla SIM il comando appenna letto
-                delay(500);
+                      DEBUG_PRINTLN(" => Mittente non riconosciuto!");
+                      statSMS = (sms.DeleteSMS(position));      //Cancello dalla SIM i messaggi ricevuti da destinatari sconosciuti o indesiderati
+                      if (statSMS!=1) DEBUG_PRINTLN("ERRORE: SMS non cancellato!");
+                      else DEBUG_PRINTLN("SMS cancellato!");
             }
-            sms.DeleteSMS(position);                     //Cancello dalla SIM i messaggi appena letti ed eseguiti
         }
     }
 #endif
@@ -180,17 +196,17 @@ void calibrazione() {
 
   scale.set_scale();
   scale.tare();
-  Serial.println("Hai 5 secondi per posizionare 2kg di peso");
+  DEBUG_PRINTLN("Hai 5 secondi per posizionare 2kg di peso");
   delay(5000);
-  long x = scale.get_units(10);          //stampa media dopo 20 letture
-  long y = 2000;                        // i 2kg
-  double m = (double)(x/y);
-  Serial.print("media delle 10 letture: ");
-  Serial.println(x);
-  Serial.print("il peso noto: ");
-  Serial.println(y);
-  Serial.print("il valore da passare a set_scale è:");
-  Serial.println(m);
+  long a = scale.get_units(10);          //stampa media dopo 20 letture
+  long b = 2000;                        // i 2kg
+  double c = (double)(a/b);
+  DEBUG_PRINT("media delle 10 letture: ");
+  DEBUG_PRINTLN(a);
+  DEBUG_PRINT("il peso noto: ");
+  DEBUG_PRINTLN(b);
+  DEBUG_PRINT("il valore da passare a set_scale è:");
+  DEBUG_PRINTLN(c);
 }
 
 long readVcc() {
