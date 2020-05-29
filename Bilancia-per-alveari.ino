@@ -116,11 +116,7 @@ void loop() {
         if (position) {
             DEBUG_PRINT("SMS Position: ");
             DEBUG_PRINTLNDEC(position,DEC);
-            statSMS = (sms.GetSMS(position, mittente, smsbuffer, 100));     //Leggo il messaggio SMS e registro il numero del mittente
-            if (statSMS!=1) {
-              DEBUG_PRINT("ERRORE: Ricezione SMS! Codice errore: ");
-              DEBUG_PRINTLN(statSMS);
-            }
+            sms.GetSMS(position, mittente, smsbuffer, 100);     //Leggo il messaggio SMS e registro il numero del mittente
             DEBUG_PRINT("SMS ignorato ricevuto da:");
             DEBUG_PRINTLN(mittente);
             DEBUG_PRINT("\r\ncontenuto SMS:");
