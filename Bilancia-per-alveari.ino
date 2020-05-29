@@ -13,7 +13,7 @@
   #define DEBUG_PRINTLNDEC(x,DEC) Serial.println(x,DEC)
 #else
   #define DEBUG_PRINT(x)
-  #define DEBUG_PRINT2(x,DEC)
+  #define DEBUG_PRINT2(x,y)
   #define DEBUG_PRINTLN(x)
   #define DEBUG_PRINTLNDEC(x,DEC)
 #endif
