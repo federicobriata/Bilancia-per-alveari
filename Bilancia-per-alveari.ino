@@ -1,111 +1,142 @@
+#include "HX711.h"
 #include "sms.h"
 #include <SoftwareSerial.h>
+
 GSM GSM;
 SMSGSM sms;
 
-#include "HX711.h"
 #define DOUT A1
 #define SCK A0
 HX711 scale(DOUT, SCK);
 
-char Misure[20];
 boolean started=false;
-char smsbuffer[10];
-char Mittente[20];
+float units;                                     //float dove inserire il valore di peso
+char destinatario[20];
 
 float valoredicalibrazione = -21.45;  // calibrazione della cella di carico
-float units;
-float units_sms;
-char peso[5];                         //char dove inserire il valore di peso da inviare via SMS
 
-int Reset = 4;                        //dichiaro il Pin per dare l'impulso di reset quando richiesto
+//int Reset = 4;                        //dichiaro il Pin per dare l'impulso di reset quando richiesto
 void(* Riavvia)(void) = 0;          //Comando per Software Reset solo con Auduino Uno
 
 void setup() {
-    digitalWrite(Reset, HIGH);          //Dichiaro il Pin 4 in che condizione deve stare quando non
-    delay(200);                         //viene interessato dal comando di Reset
-    pinMode(Reset, OUTPUT);
+    pinMode(LED_BUILTIN, OUTPUT);             // initialize digital pin LED_BUILTIN as an output.
+    digitalWrite(LED_BUILTIN, HIGH);          // turn the LED on (HIGH is the voltage level)
 
+    //pinMode(Reset, OUTPUT);
+    //digitalWrite(Reset, HIGH);              //Dichiaro il Pin 4 in che condizione deve stare quando non
+    //delay(200);                             //viene interessato dal comando di Reset
 
+    // initialize serial for debugging
     Serial.begin(19200);
 
-    scale.set_scale();
+    scale.set_scale(valoredicalibrazione);	//la scala si setta qui e non nel loop
+    //scale.set_scale();			//senza parametro si fa solo per Calibrazione
     scale.tare();
 
     Serial.println("ACCENSIONE MODULO GSM...");
 
-    digitalWrite(9,HIGH);
-    delay(1000);
-    digitalWrite(9,LOW);
-    delay(5000);
-
+    //    in questo momento il modem è alimentato direttamente da LM2596
+    //    digitalWrite(9,HIGH);
+    //    delay(1000);
+    //    digitalWrite(9,LOW);
+    //    delay(5000);
 
     Serial.println("VERIFICA SE LA SCHEDA GSM E' CONNESSA.");
 
     //Inizializzo la connessione impostando il baurate
-
     if (gsm.begin(2400)) {
         Serial.println("STATO Modulo GSM = CONNESSO");
         started=true;
     }
     else Serial.println("STATO Modulo GSM = NON CONNESS0");
-
-    delay(1000);   // Pausa di stabilizzazione dei sensori SHT
 }
 
 void loop() {
+    //scale.set_scale(valoredicalibrazione);        //la scala NON si setta qui ma in setup una sola volta
 
-    char position;
-
-    scale.set_scale(valoredicalibrazione);
-
-    // Faccio una media di 10 letture e le associo alla voce "units"
-    units = scale.get_units(10);
-
-    Serial.print("Peso:");
+    Serial.print("Peso");
+ // Associo alla variabile units che sarà usata anche per SMS
+    units = (scale.get_units(5));                     // Peso medio di 5 letture meno il peso della tara
     Serial.print(units, 0);
-    Serial.println(" g ");
+    Serial.println(" g");
 
+    if(started) {                                     // Check if there is an active connection.
+        digitalWrite(LED_BUILTIN, LOW);               // turn the LED off by making the voltage LOW
 
-    strcpy(Mittente,"3473813504");
+        char str_peso[5] = "";                                      //char temporanea dove inserire il valore di peso da inviare via SMS
+        char messaggio[63] = "";                                    //char completa usata per inviare SMS
+        char mittente[20] = "";                                     //reset char che contiene il numero di telefono di SMS ricevuti
+        char smsbuffer[100] = "";
+        char statSMS = -1;
+        char position = sms.IsSMSPresent(SMS_READ);                 //Con questo comando controlla solo gli SMS già letti e li cancella
 
-    // Legge se ci sono messaggi disponibili sulla SIM Card
-    // e li visualizza sul Serial Monitor.
-    position = sms.IsSMSPresent(SMS_UNREAD); // Con questo comando esegue solo gli Sms non letti
-    if (position) {
-        // Leggo il messaggio SMS e stabilisco chi sia il mittente
-        sms.GetSMS(position, Mittente, smsbuffer, 10);
-        Serial.println("Messaggio inviato da:");
-        Serial.println(Mittente);
-        Serial.println("\r\n SMS testo:");
-        Serial.print(smsbuffer);
-
-        if (strcmp(smsbuffer,"Reset")==0)  {    //Invio sms "Reset" per resettare il programma
-            Serial.println("...Riavvio...");
-            sms.DeleteSMS(position);              //Cancello dalla SIM il comando appenna letto
-            delay(500);
-            Riavvia();                          //Comando si software reset con Arduino Uno
-            //digitalWrite(Reset, LOW);             //Eseguo il comando di Reset mettendo a massa il Pin 4
+        // Legge se ci sono messaggi disponibili sulla SIM Card
+        // e li visualizza sul Serial1 Monitor.
+        if (position) {
+            Serial.print("SMS Position: ");
+            Serial.println(position,DEC);
+            sms.GetSMS(position, mittente, smsbuffer, 100);     //Leggo il messaggio SMS e registro il numero del mittente
+            Serial.print("SMS ignorato ricevuto da:");
+            Serial.println(mittente);
+            Serial.print("\r\ncontenuto SMS:");
+            Serial.println(smsbuffer);
+            Serial.println(" => Trovato messaggio già letto.");
+            statSMS = (sms.DeleteSMS(position));      //Cancello dalla SIM i messaggi ricevuti da destinatari sconosciuti o indesiderati
+            if (statSMS!=1) Serial.println("ERRORE: SMS non cancellato!");
+            else Serial.println("SMS cancellato!");
         }
-        if (strcmp(smsbuffer,"Misure")==0)  {  //Invio sms "Misure" per ricevere sms con valori
-            units_sms = scale.get_units(5);
-            dtostrf(units_sms,0,0,peso);
-            snprintf(Misure,20,"Peso=%sg",peso);
-            sms.SendSMS(Mittente,Misure);
-            sms.DeleteSMS(position);              //Cancello dalla SIM il comando appenna letto
-            delay(500);
-            //lcd.clear();
-            //lcd.init();
-            Serial.print(Misure);
+        position = sms.IsSMSPresent(SMS_UNREAD);               //Con questo comando controlla solo gli SMS non letti
+        if (position) {
+            Serial.print("SMS Position: ");
+            Serial.println(position,DEC);
+            sms.GetSMS(position, mittente, smsbuffer, 100);     //Leggo il messaggio SMS e registro il numero del mittente
+            Serial.print("Nuovo SMS ricevuto da:");
+            Serial.println(mittente);
+            Serial.print("\r\ncontenuto SMS:");
+            Serial.println(smsbuffer);
+            if (strcmp(mittente,destinatario)==0)  {           // Verifico che sia del giusto mittente
+                  if (strcmp(smsbuffer,"Reset")==0)  {         //Ricevuto sms "Reset" per resettare il programma
+                      Serial.println("...Riavvio...");
+                      statSMS = (sms.DeleteSMS(position));     //Cancello dalla SIM il comando appenna letto
+                      if (statSMS!=1) Serial.println("ERRORE: SMS non cancellato!");
+                      else Serial.println("SMS cancellato!");
+                      delay(500);
+                      //digitalWrite(Reset, LOW);              //Eseguo il comando di Reset mettendo a massa il Pin 4 con Arduino Mega
+                      Riavvia();                               //Comando di software reset con Arduino Uno
+                  }
+                  if (strcmp(smsbuffer,"Misure")==0)  {        //Ricevuto sms "Misure" per inviare sms con valori
+                      dtostrf(units,0,0,str_peso);             // make the float into a char array
+                      snprintf(messaggio,63,"Peso=%s g",str_peso);
+                      statSMS = (sms.SendSMS(destinatario,messaggio));
+                      if (statSMS!=1) Serial.println("ERRORE: SMS non inviato");
+                      statSMS = (sms.DeleteSMS(position));     //Cancello dalla SIM il messaggio appenna letto
+                      if (statSMS!=1) Serial.println("ERRORE: SMS non cancellato!");
+                      else Serial.println("SMS cancellato!");
+                      delay(500);
+                      Serial.print("SMS inviato da:");
+                      Serial.println(mittente);
+                      Serial.print("\r\ncontenuto SMS:");
+                      Serial.println(messaggio);
+                  }
+                  else {
+                      Serial.println(" => Comando non riconosciuto!");
+                      statSMS = (sms.SendSMS(destinatario,"Comando Errato"));  //risposta in caso di messaggio errato
+                      if (statSMS!=1) Serial.println("ERRORE: SMS non inviato");
+                      statSMS = (sms.DeleteSMS(position));     //Cancello dalla SIM il comando errato appenna ricevuto
+                      if (statSMS!=1) Serial.println("ERRORE: SMS non cancellato!");
+                      else Serial.println("SMS cancellato!");
+                      delay(500);
+                  }
+            }
+            else {
+                      Serial.println(" => Mittente non riconosciuto!");
+                      statSMS = (sms.DeleteSMS(position));      //Cancello dalla SIM i messaggi ricevuti da destinatari sconosciuti o indesiderati
+                      if (statSMS!=1) Serial.println("ERRORE: SMS non cancellato!");
+                      else Serial.println("SMS cancellato!");
+            }
         }
-        else {
-            Serial.println(" => non riconosciuto!");
-            sms.SendSMS(Mittente,"Comando Errato");  //risposta in caso di messaggio errato
-            sms.DeleteSMS(position);              //Cancello dalla SIM il comando appenna letto
-            delay(500);
-            //lcd.clear();
-            //lcd.init();
-        }
-        sms.DeleteSMS(position);             //Cancello dalla SIM i messaggi appena letti ed eseguiti
     }
-}
+    scale.power_down();                              // put the ADC in sleep mode
+    delay(5000);
+    scale.power_up();
+};
