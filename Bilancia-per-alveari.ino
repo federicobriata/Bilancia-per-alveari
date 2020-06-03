@@ -35,6 +35,10 @@ char destinatario[20];
 //const float LOADCELL_OFFSET = 226743; // the offset of the scale, is raw output without any weight, get this first and then do set.scale
 const float LOADCELL_DIVIDER = -21.45;  // scala di calibrazione della cella di carico, this is the difference between the raw data of a known weight and an emprty scale
 
+//int pon = 9;                            //dichiaro il Pin per relè
+//pinMode(pon, OUTPUT);
+//int dtr = 9;                            //dichiaro il Pin dtr per wake-up modem
+//pinMode(dtr, OUTPUT);
 //int Reset = 4;                          //dichiaro il Pin per dare l'impulso di reset quando richiesto
 void(* Riavvia)(void) = 0;              //Comando per Software Reset solo con Auduino Uno
 
@@ -67,11 +71,9 @@ void setup() {
     strcpy(destinatario,"+393473813504");         //Salva il mio numero nel char destinatario
     DEBUG_PRINTLN("ACCENSIONE MODULO GSM...");
 
-    //    in questo momento il modem è alimentato direttamente da LM2596
-    //    digitalWrite(9,HIGH);
-    //    delay(1000);
-    //    digitalWrite(9,LOW);
-    //    delay(5000);
+    //    in questo momento il modem è alimentato direttamente da LM2596 e non viene usato un relè
+    //rely_Off();
+    //rely_On();
 
     DEBUG_PRINTLN("VERIFICA SE LA SCHEDA GSM E' CONNESSA.");
 
@@ -115,6 +117,12 @@ void loop() {
     DEBUG_PRINTLN(" g");
 #ifdef GSM
     if(started) {                                     // Check if there is an active connection.
+        gsm.CheckRegistration();           // Controllo se la scheda GSM è connessa alla rete
+        if (gsm.IsRegistered()==0) {       // Se è disconnessa riavvio la procedura di connessione
+            Serial.println("GSM disconnesso, Riavvio");  //Messaggio sul serial monitor
+            //rely_Off();
+            //rely_On();
+        }
         digitalWrite(LED_BUILTIN, LOW);               // turn the LED off by making the voltage LOW
 
         char str_peso[5] = "";                                      //char temporanea dove inserire il valore di peso da inviare via SMS
@@ -188,11 +196,58 @@ void loop() {
         }
     }
 #endif
+    //rely_Off();
+    gsm_SoftSleepModeOn();
+    //gsm_DeepSleepModeOn();
     scale.power_down();                              // put the ADC in sleep mode
     delay(5000);                                     // dormo 5 secondi
     //delay(60*5000);                                  // dormo 5 minuti
+    //rely_On();
+    gsm_SoftSleepModeOff();
+    //gsm_DeepSleepModeOff();
     scale.power_up();
 };
+void gsm_SoftSleepModeOn() {
+#ifdef GSM
+  gsm.SimpleWriteln("AT+CSCLK=2");
+  delay(1000);
+#endif
+}
+
+void gsm_SoftSleepModeOff() {
+#ifdef GSM
+  gsm.SimpleWriteln("AT+CSCLK=0");
+  delay(1000);
+#endif
+}
+
+//void gsm_DeepSleepModeOn() {
+//#ifdef GSM
+//  gsm.SimpleWriteln("AT+CFUN=0");
+//  delay(1000);
+//  gsm.SimpleWriteln("AT+CSCLK=1");
+//  delay(1000);
+//#endif
+//}
+
+//void gsm_DeepSleepModeOff() {
+//#ifdef GSM
+//  digitalWrite(dtr,LOW);
+//  delay(5000);
+//  gsm.SimpleWriteln("AT+CFUN=1");
+//  delay(1000);
+//#endif
+//}
+
+//void rely_On() {
+//   digitalWrite(pon,HIGH);
+//   delay(2000);
+//}
+
+//void rely_Off() {
+//   digitalWrite(pon,LOW);
+//   delay(5000);
+//}
 
 void calibrazione() {
   //1 Call set_scale() with no parameter.
