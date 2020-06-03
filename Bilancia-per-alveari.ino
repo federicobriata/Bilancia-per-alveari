@@ -119,12 +119,6 @@ void loop() {
     DEBUG_PRINTLN(" g");
 #ifdef GSM
     if(started) {                                     // Check if there is an active connection.
-        gsm.CheckRegistration();           // Controllo se la scheda GSM è connessa alla rete
-        if (gsm.IsRegistered()==0) {       // Se è disconnessa riavvio la procedura di connessione
-            Serial.println("GSM disconnesso, Riavvio");  //Messaggio sul serial monitor
-            //rely_Off();
-            //rely_On();
-        }
         digitalWrite(LED_BUILTIN, LOW);               // turn the LED off by making the voltage LOW
 
         char str_peso[5] = "";                                      //char temporanea dove inserire il valore di peso da inviare via SMS
