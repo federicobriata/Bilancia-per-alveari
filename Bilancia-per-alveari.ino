@@ -88,6 +88,8 @@ void setup() {
 
 void loop() {
     DEBUG_PRINTLN("\r\nNuova lettura..");
+    DEBUG_PRINT("\tData e Ora:\t\t\t\t\t\t");
+    gsm_getclock();
     vcc = readVcc();
     DEBUG_PRINT("\tLettura VCC:\t\t\t\t\t\t");
     DEBUG_PRINT(vcc);
@@ -207,6 +209,22 @@ void loop() {
     //gsm_DeepSleepModeOff();
     scale.power_up();
 };
+
+void gsm_getclock() {
+#ifdef GSM
+  String mystr="";
+  int i = 0;
+  gsm.SimpleWriteln("AT+CCLK?");
+  delay(1000);
+  gsm.WhileSimpleReadStr(mystr);
+  int x = mystr.indexOf(String('"')) + 1;
+  int y = mystr.lastIndexOf(String('"'));
+  String datetime = mystr.substring(x, y);
+  DEBUG_PRINTLN(datetime);
+  delay(500);
+#endif
+}
+
 void gsm_SoftSleepModeOn() {
 #ifdef GSM
   gsm.SimpleWriteln("AT+CSCLK=2");

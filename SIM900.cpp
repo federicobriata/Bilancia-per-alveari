@@ -412,6 +412,20 @@ void SIMCOM900::WhileSimpleRead()
 	}
 }
 
+void SIMCOM900::WhileSimpleReadStr(String signal)
+{
+  char datain;
+  int i=0;
+  while(_cell.available()>0){
+    datain=_cell.read();
+    if(datain>0){
+      //Serial.print(datain);
+      signal[i] = datain;
+      i++;
+    }
+  }
+}
+
 //---------------------------------------------
 /**********************************************************
 Turns on/off the speaker
