@@ -56,9 +56,12 @@ void setup() {
     calibrazione();
 #endif
 
+    DEBUG_PRINTLN("calcolo della tara");
+    DEBUG_PRINTLN("non mettere nulla sul piatto");
     //scale.set_offset(LOADCELL_OFFSET);
     scale.set_scale(LOADCELL_DIVIDER);
     scale.tare();                                 // reset the scale to 0
+    DEBUG_PRINTLN("sistema pronto a pesare");
 
 #ifdef GSM
     strcpy(destinatario,"+393473813504");         //Salva il mio numero nel char destinatario
@@ -87,21 +90,29 @@ void loop() {
     DEBUG_PRINT("\tLettura VCC:\t\t\t\t\t\t");
     DEBUG_PRINT(vcc);
     DEBUG_PRINTLN(" mV");
-    DEBUG_PRINT("\tPesata media grezza:\t\t\t\t\t");
-    DEBUG_PRINT(scale.read_average(5));	            // Peso medio grezzo di 5 letture
+    DEBUG_PRINT("\toffset:\t\t\t\t\t\t\t");
+    DEBUG_PRINT(scale.get_offset());
     DEBUG_PRINTLN(" g");
-    DEBUG_PRINT("\tPesata grezza singola:\t\t\t\t\t");
-    DEBUG_PRINT(scale.get_value());                  // Peso grezzo singolo, returns (read_average() - LOADCELL_OFFSET), that is the current value without the tare weight
+    DEBUG_PRINT("\tPesata media grezza con tara:\t\t\t\t");
+    DEBUG_PRINT(scale.read_average(5));                    // Peso medio grezzo di 5 letture
+    DEBUG_PRINTLN(" g");
+    DEBUG_PRINT("\tPesata singola grezza senza tara:\t\t\t");
+    DEBUG_PRINT(scale.get_value());                        // Peso singolo grezzo, returns (read_average() - LOADCELL_OFFSET), that is the current value without the tare weight
     DEBUG_PRINTLN(" g");
     DEBUG_PRINT("\tPesata media senza tara:\t\t\t\t");
  // Associo alla variabile units che sarà usata anche per SMS
-    units = (scale.get_units(5));                     // Peso medio di 5 letture meno il peso della tara
+    units = (scale.get_units(5));                          // Peso medio di 5 letture meno il peso della tara
     DEBUG_PRINT2(units, 0);
     DEBUG_PRINTLN(" g");
-    DEBUG_PRINT("\tPesata media senza tara diviso scala di calibrazione:\t");
-    DEBUG_PRINT2(scale.get_units(5), 1);              // returns get_value() divided by LOADCELL_DIVIDER la media di 5 letture meno il peso della tara, diviso per il valore della scala di calibrazione settata con set_scale"
+    DEBUG_PRINT("\tPesata media su 5 letture senza tara diviso scala di calibrazione:");
+    DEBUG_PRINT2(scale.get_units(5), 1);                   // la media di 5 letture meno il peso della tara, diviso per il valore della scala di calibrazione settata con set_scale, returns get_value() divided by LOADCELL_DIVIDER
     DEBUG_PRINTLN(" g");
-
+    DEBUG_PRINT("\tPesata media su 10 letture senza tara diviso scala di calibrazione:");
+    DEBUG_PRINT2(scale.get_units(10), 1);                  // la media di 10 letture meno il peso della tara, diviso per il valore della scala di calibrazione settata con set_scale
+    DEBUG_PRINTLN(" g");
+    DEBUG_PRINT("\tPesata media su 20 letture senza tara diviso scala di calibrazione:");
+    DEBUG_PRINT2(scale.get_units(20), 3);                  // la media di 20 letture meno il peso della tara, diviso per il valore della scala di calibrazione settata con set_scale
+    DEBUG_PRINTLN(" g");
 #ifdef GSM
     if(started) {                                     // Check if there is an active connection.
         digitalWrite(LED_BUILTIN, LOW);               // turn the LED off by making the voltage LOW
@@ -112,7 +123,6 @@ void loop() {
         char smsbuffer[100] = "";
         char statSMS = -1;
         char position = sms.IsSMSPresent(SMS_READ);                 //Con questo comando controlla solo gli SMS già letti e li cancella
-
         if (position) {
             DEBUG_PRINT("SMS Position: ");
             DEBUG_PRINTLNDEC(position,DEC);
@@ -179,7 +189,8 @@ void loop() {
     }
 #endif
     scale.power_down();                              // put the ADC in sleep mode
-    delay(5000);
+    delay(5000);                                     // dormo 5 secondi
+    //delay(60*5000);                                  // dormo 5 minuti
     scale.power_up();
 };
 
@@ -192,16 +203,16 @@ void calibrazione() {
 
   scale.set_scale();
   scale.tare();
-  DEBUG_PRINTLN("Hai 5 secondi per posizionare 2kg di peso");
+  DEBUG_PRINTLN("Hai 5 secondi per posizionare 1kg di peso");
   delay(5000);
-  long a = scale.get_units(10);          //stampa media dopo 20 letture
-  long b = 2000;                        // i 2kg
+  long a = scale.get_units(10);          //stampa media dopo 10 letture
+  long b = 1000;                         // 1kg
   double c = (double)(a/b);
   DEBUG_PRINT("media delle 10 letture: ");
   DEBUG_PRINTLN(a);
   DEBUG_PRINT("il peso noto: ");
   DEBUG_PRINTLN(b);
-  DEBUG_PRINT("il valore da passare a set_scale è:");
+  DEBUG_PRINT("il valore da passare a set_scale è: ");
   DEBUG_PRINTLN(c);
 }
 
