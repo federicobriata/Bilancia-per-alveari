@@ -70,7 +70,7 @@ void loop() {
         char statSMS = -1;
         char position = sms.IsSMSPresent(SMS_READ);                 //Con questo comando controlla solo gli SMS già letti e li cancella
 
-	strcpy(Mittente,"3473813504");			//numero di telefono abilitato ad inviare comandi
+	strcpy(mittente,"3473813504");			//numero di telefono abilitato ad inviare comandi
 
         // Legge se ci sono messaggi disponibili sulla SIM Card
         // e li visualizza sul Serial1 Monitor.
