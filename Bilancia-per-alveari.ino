@@ -127,6 +127,7 @@ void loop() {
         char smsbuffer[100] = "";
         char statSMS = -1;
         char position = sms.IsSMSPresent(SMS_READ);                 //Con questo comando controlla solo gli SMS già letti e li cancella
+	strcpy(mittente,"+393473813504");                       //numero di telefono abilitato ad inviare comandi
         if (position) {
             DEBUG_PRINT("SMS Position: ");
             DEBUG_PRINTLNDEC(position,DEC);
